@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SwiftWatchdogTray</AssemblyName>
+    <RootNamespace>SwiftWatchdogTray</RootNamespace>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <ApplicationIcon>Resources\icon_active.ico</ApplicationIcon>
+    <Company>Metcash</Company>
+    <Product>SwiftPOS Watchdog Tray</Product>
+    <Description>System tray controller for SwiftPOS Watchdog service</Description>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_active.ico" />
+    <EmbeddedResource Include="Resources\icon_paused.ico" />
+  </ItemGroup>
+
+</Project>

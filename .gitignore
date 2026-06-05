@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+
+# Published output (produced by BUILD.ps1)
+publish/
+
+# Compiled installer binaries (built artifacts — not source)
+Installer/*.exe
+Installer/*.zip
+
+# Visual Studio / Rider
+.vs/
+*.user
+*.suo
+*.DotSettings.user
+.idea/
+
+# NuGet
+*.nupkg
+packages/

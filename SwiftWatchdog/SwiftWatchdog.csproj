@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SwiftWatchdog</AssemblyName>
+    <RootNamespace>SwiftWatchdog</RootNamespace>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <!-- Self-contained single-file for easy deployment -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- Windows service support -->
+    <UseWindowsService>true</UseWindowsService>
+    <!-- File version info — shown in Task Manager Description column -->
+    <Company>Metcash</Company>
+    <Product>SwiftPOS Watchdog</Product>
+    <Description>Monitors Swiftpos Service Monitor for faults &amp; restarts daily</Description>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Copyright>Metcash</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>
