@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish SwiftWatchdog service
+        run: >
+          dotnet publish SwiftWatchdog/SwiftWatchdog.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          -o publish/service
+
+      - name: Publish SwiftWatchdog tray
+        run: >
+          dotnet publish SwiftWatchdogTray/SwiftWatchdogTray.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          -o publish/tray
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Installer\SwiftWatchdog.iss'
+
+      - name: Compute installer checksum
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash -Algorithm SHA256 -Path "installer\SwiftWatchdog-Setup.exe"
+          "$($hash.Hash)  SwiftWatchdog-Setup.exe" | Out-File -FilePath "installer\SwiftWatchdog-Setup.exe.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SwiftWatchdog-Setup
+          path: |
+            installer/SwiftWatchdog-Setup.exe
+            installer/SwiftWatchdog-Setup.exe.sha256
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/SwiftWatchdog-Setup.exe
+            installer/SwiftWatchdog-Setup.exe.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -21,7 +21,7 @@ It fixes a known silent failure bug by force-restarting the service every day at
 
 Download **SwiftWatchdog-Setup.exe** from [Releases](../../releases/latest) and run it as Administrator (UAC prompt will appear).
 
-> **Windows SmartScreen warning:** releases aren't code-signed yet (a free OSS signing certificate is pending — see [licensing](#license)), so Windows will show an "unknown publisher" / SmartScreen prompt. Click **More info → Run anyway** to proceed. To verify a download hasn't been tampered with, compare its SHA-256 hash against the value published in the release notes.
+> **Windows SmartScreen warning:** releases aren't code-signed yet (a free OSS signing certificate is pending — see [licensing](#license)), so Windows will show an "unknown publisher" / SmartScreen prompt. Click **More info → Run anyway** to proceed. To verify a download hasn't been tampered with, check its hash against the `.sha256` file attached to the same release — releases are built and published automatically by [GitHub Actions](.github/workflows/build.yml) from this public source, not uploaded by hand.
 
 The installer:
 1. Copies both EXEs to `C:\ProgramData\SwiftWatchdog\`
@@ -71,9 +71,13 @@ Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and opti
 Outputs:
 - `publish\service\SwiftWatchdog.exe`
 - `publish\tray\SwiftWatchdogTray.exe`
-- `Installer\SwiftWatchdog-Setup.exe` *(if Inno Setup is installed)*
+- `installer\SwiftWatchdog-Setup.exe` *(if Inno Setup is installed)*
 
 See [INSTALL.md](INSTALL.md) for manual deployment steps.
+
+### Releases
+
+Pushing a `v*` tag (e.g. `v1.0.1`) triggers [.github/workflows/build.yml](.github/workflows/build.yml), which builds both EXEs and the installer on a clean GitHub-hosted runner and publishes them to [Releases](../../releases) along with a `.sha256` checksum. Every push and pull request also runs the same build to catch breakage early. There's no manual upload step — this is what lets a code-signing service verify the published installer actually comes from this repository.
 
 ---
 
