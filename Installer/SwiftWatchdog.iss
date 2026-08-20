@@ -4,7 +4,7 @@
 
 #define AppName      "SwiftWatchdog"
 #define AppVersion   "1.0.0"
-#define AppPublisher "Metcash"
+#define AppPublisher "Harry Boardman"
 #define InstallDir   "{commonappdata}\SwiftWatchdog"
 #define ServiceExe   "SwiftWatchdog.exe"
 #define TrayExe      "SwiftWatchdogTray.exe"

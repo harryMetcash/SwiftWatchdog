@@ -13,7 +13,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <ApplicationIcon>Resources\icon_active.ico</ApplicationIcon>
-    <Company>Metcash</Company>
+    <Company>SwiftWatchdog</Company>
     <Product>SwiftPOS Watchdog Tray</Product>
     <Description>System tray controller for SwiftPOS Watchdog service</Description>
     <FileVersion>1.0.0.0</FileVersion>
