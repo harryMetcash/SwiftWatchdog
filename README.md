@@ -21,6 +21,8 @@ It fixes a known silent failure bug by force-restarting the service every day at
 
 Download **SwiftWatchdog-Setup.exe** from [Releases](../../releases/latest) and run it as Administrator (UAC prompt will appear).
 
+> **Windows SmartScreen warning:** releases aren't code-signed yet (a free OSS signing certificate is pending — see [licensing](#license)), so Windows will show an "unknown publisher" / SmartScreen prompt. Click **More info → Run anyway** to proceed. To verify a download hasn't been tampered with, compare its SHA-256 hash against the value published in the release notes.
+
 The installer:
 1. Copies both EXEs to `C:\ProgramData\SwiftWatchdog\`
 2. Registers and starts the **SwiftPOS Watchdog** Windows service
@@ -85,3 +87,9 @@ See [INSTALL.md](INSTALL.md) for manual deployment steps.
 | Start timeout | 120 seconds |
 | Log retention | 30 days |
 | Pause flag file | `C:\ProgramData\SwiftWatchdog\PAUSED` |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
