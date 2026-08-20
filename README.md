@@ -21,7 +21,7 @@ It fixes a known silent failure bug by force-restarting the service every day at
 
 Download **SwiftWatchdog-Setup.exe** from [Releases](../../releases/latest) and run it as Administrator (UAC prompt will appear).
 
-> **Windows SmartScreen warning:** releases aren't code-signed yet (a free OSS signing certificate is pending — see [licensing](#license)), so Windows will show an "unknown publisher" / SmartScreen prompt. Click **More info → Run anyway** to proceed. To verify a download hasn't been tampered with, check its hash against the `.sha256` file attached to the same release — releases are built and published automatically by [GitHub Actions](.github/workflows/build.yml) from this public source, not uploaded by hand.
+> **Windows SmartScreen warning:** releases aren't code-signed yet — a free code-signing certificate has been applied for via [SignPath Foundation](https://signpath.org/) (application submitted 2026-08-20, pending review) — so Windows will show an "unknown publisher" / SmartScreen prompt. Click **More info → Run anyway** to proceed. To verify a download hasn't been tampered with, check its hash against the `.sha256` file attached to the same release — releases are built and published automatically by [GitHub Actions](.github/workflows/build.yml) from this public source, not uploaded by hand.
 
 The installer:
 1. Copies both EXEs to `C:\ProgramData\SwiftWatchdog\`
