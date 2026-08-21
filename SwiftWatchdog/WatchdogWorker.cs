@@ -23,6 +23,8 @@ public sealed class WatchdogWorker : BackgroundService
     private const string PipeName            = "SwiftWatchdogCtrl";
     private const int    PipeBufferSize      = 8192;
     private const int    LogRetentionDays    = 30;
+    private const int    CpuSampleIntervalSeconds  = 10;
+    private const int    CpuRestartCooldownMinutes = 5;
     // ─────────────────────────────────────────────────────────────────────────
 
     private DateOnly _lastForcedRestartDate = DateOnly.MinValue;
@@ -30,6 +32,14 @@ public sealed class WatchdogWorker : BackgroundService
 
     private WatchdogSettings _settings = WatchdogSettings.Default;
     private readonly object  _restartLock = new();
+
+    private DateTime? _highCpuSince;
+    private double    _highCpuMin;
+    private double    _highCpuMax;
+    private DateTime  _cpuCooldownUntil = DateTime.MinValue;
+    private System.Diagnostics.Process? _monitoredProcess;
+    private double    _lastCpuTotalSeconds;
+    private DateTime  _lastCpuSampleTime;
 
     public WatchdogWorker(ILogger<WatchdogWorker> logger) { }  // logger unused; logging goes via static Log()
 
@@ -49,8 +59,9 @@ public sealed class WatchdogWorker : BackgroundService
             $"threshold {_settings.CpuThresholdPercent}% (per-core) sustained {_settings.CpuSustainedPeriodSeconds}s.");
         Log($"  Log directory : {DataDir}  (retained {LogRetentionDays} days)");
 
-        // Named pipe server runs on a background thread
+        // Named pipe server and CPU monitor each run on their own background thread
         _ = Task.Run(() => RunPipeServer(stoppingToken), stoppingToken);
+        _ = Task.Run(() => RunCpuMonitorLoop(stoppingToken), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -324,6 +335,140 @@ public sealed class WatchdogWorker : BackgroundService
 
         Log($"Service is {svc.Status} — unexpected. Initiating recovery restart.");
         lock (_restartLock) { RestartService(svc); }
+    }
+
+    // ── CPU monitoring ────────────────────────────────────────────────────────
+
+    private async Task RunCpuMonitorLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                SampleCpuOnce();
+            }
+            catch (Exception ex)
+            {
+                Log($"WARNING: CPU monitor error: {ex.Message}");
+                ResetCpuTracking();
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(CpuSampleIntervalSeconds), ct)
+                      .ContinueWith(_ => { }, CancellationToken.None);
+        }
+    }
+
+    private void SampleCpuOnce()
+    {
+        WatchdogSettings settings = _settings; // snapshot — avoids torn reads if SETSETTINGS swaps mid-tick
+
+        if (IsPaused || !settings.CpuMonitoringEnabled)
+        {
+            ResetCpuTracking();
+            return;
+        }
+
+        if (DateTime.UtcNow < _cpuCooldownUntil)
+            return;
+
+        bool needsBaseline = _monitoredProcess is null;
+        if (!needsBaseline)
+        {
+            try { needsBaseline = _monitoredProcess!.HasExited; }
+            catch { needsBaseline = true; }
+        }
+
+        if (needsBaseline)
+        {
+            ResetCpuTracking();
+            TryResolveMonitoredProcess(); // primes the baseline for next tick; no-op if service isn't found
+            return;
+        }
+
+        double cpuNowSeconds;
+        DateTime now = DateTime.UtcNow;
+        try
+        {
+            cpuNowSeconds = _monitoredProcess!.TotalProcessorTime.TotalSeconds;
+        }
+        catch
+        {
+            // Process likely exited between the HasExited check above and now
+            ResetCpuTracking();
+            return;
+        }
+
+        double deltaCpuMs  = (cpuNowSeconds - _lastCpuTotalSeconds) * 1000.0;
+        double deltaWallMs = (now - _lastCpuSampleTime).TotalMilliseconds;
+        _lastCpuTotalSeconds = cpuNowSeconds;
+        _lastCpuSampleTime   = now;
+
+        if (deltaWallMs <= 0) return;
+
+        // Raw per-core: 100% = one full logical core saturated (not divided by core count).
+        // Chosen for portability across tills with different core counts — see design doc.
+        double cpuPercent = (deltaCpuMs / deltaWallMs) * 100.0;
+
+        if (cpuPercent >= settings.CpuThresholdPercent)
+        {
+            if (_highCpuSince is null)
+            {
+                _highCpuSince = now;
+                _highCpuMin = cpuPercent;
+                _highCpuMax = cpuPercent;
+                Log($"High CPU usage detected: {cpuPercent:F1}% (threshold {settings.CpuThresholdPercent:F1}%).");
+                return;
+            }
+
+            _highCpuMin = Math.Min(_highCpuMin, cpuPercent);
+            _highCpuMax = Math.Max(_highCpuMax, cpuPercent);
+
+            double sustainedSeconds = (now - _highCpuSince.Value).TotalSeconds;
+            if (sustainedSeconds >= settings.CpuSustainedPeriodSeconds)
+            {
+                Log($"CPU threshold exceeded for {sustainedSeconds:F0}s " +
+                    $"(min={_highCpuMin:F1}%, max={_highCpuMax:F1}%). Forcing restart.");
+
+                lock (_restartLock) { ForceRestart(); }
+
+                _cpuCooldownUntil = DateTime.UtcNow.AddMinutes(CpuRestartCooldownMinutes);
+                ResetCpuTracking();
+            }
+        }
+        else
+        {
+            if (_highCpuSince is not null)
+                Log($"CPU usage returned to normal: {cpuPercent:F1}%.");
+            _highCpuSince = null;
+        }
+    }
+
+    private bool TryResolveMonitoredProcess()
+    {
+        ServiceController? svc = ResolveService(silent: true);
+        if (svc is null) return false;
+
+        int? pid = GetServicePid(svc.ServiceName);
+        if (pid is not int p) return false;
+
+        try
+        {
+            var proc = System.Diagnostics.Process.GetProcessById(p);
+            _monitoredProcess    = proc;
+            _lastCpuTotalSeconds = proc.TotalProcessorTime.TotalSeconds;
+            _lastCpuSampleTime   = DateTime.UtcNow;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ResetCpuTracking()
+    {
+        _highCpuSince     = null;
+        _monitoredProcess = null;
     }
 
     private void ForceRestart()
