@@ -76,8 +76,10 @@ Run the Windows Add/Remove Programs uninstaller, **or** from an elevated prompt:
 | | |
 |---|---|
 | Status check | Every 60 seconds — restarts service if not Running |
-| Daily forced restart | 03:00 every day regardless of status |
+| Daily forced restart | 03:00 by default, configurable via tray Options |
+| CPU monitoring | 65% (per-core) sustained 120s by default, configurable via tray Options; 5-minute fixed cooldown after a CPU-triggered restart |
 | Stop timeout | 60 seconds before force-killing process |
 | Start timeout | 120 seconds |
 | Log retention | 30 days |
 | Pause/Resume | Via system tray icon — writes/removes `C:\ProgramData\SwiftWatchdog\PAUSED` |
+| Settings | Via tray icon → Options — reads/writes `C:\ProgramData\SwiftWatchdog\settings.json` |

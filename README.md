@@ -9,8 +9,9 @@ It fixes a known silent failure bug by force-restarting the service every day at
 ## Features
 
 - **Health check every 60 seconds** — restarts the service if it is not Running
-- **Daily forced restart at 03:00** — prevents the silent failure bug regardless of service status
-- **System tray controller** — pause/resume without elevation; icon shows current state
+- **Daily forced restart** — prevents the silent failure bug regardless of service status (03:00 by default, configurable)
+- **CPU threshold monitoring** — force-restarts the service if its CPU usage stays above a configured threshold for a sustained period (disabled/enabled and both values configurable)
+- **System tray controller** — pause/resume without elevation; icon shows current state; an Options window configures CPU threshold, sustained period, and daily restart time — changes apply live, no service restart needed
 - **Self-contained EXEs** — no .NET runtime install required on target machines
 - **Self-installs as a Windows service** — auto-starts, restarts on failure, runs as LocalSystem
 - **Rolling log** — daily log files in `C:\ProgramData\SwiftWatchdog\`, auto-purged after 30 days
@@ -43,6 +44,7 @@ After installation the tray icon appears in the system notification area.
 |---|---|
 | Right-click → **Pause Watchdog** | Stops the SwiftPOS service and suspends monitoring |
 | Right-click → **Resume Watchdog** | Restarts the SwiftPOS service and resumes monitoring |
+| Right-click → **Options...** | Configure CPU threshold, sustained period, and daily restart time — applies live |
 | Green icon | Watchdog is active |
 | Grey icon | Watchdog is paused |
 
@@ -86,11 +88,14 @@ Pushing a `v*` tag (e.g. `v1.0.1`) triggers [.github/workflows/build.yml](.githu
 | Setting | Value |
 |---|---|
 | Status check interval | 60 seconds |
-| Daily forced restart | 03:00 |
+| Daily forced restart | 03:00 by default — configurable via tray Options |
+| CPU monitoring | Enabled by default — 65% (per-core) sustained 120s by default, both configurable via tray Options |
+| CPU restart cooldown | 5 minutes (fixed, not configurable) |
 | Stop timeout | 60 seconds (then force-kills process) |
 | Start timeout | 120 seconds |
 | Log retention | 30 days |
 | Pause flag file | `C:\ProgramData\SwiftWatchdog\PAUSED` |
+| Settings file | `C:\ProgramData\SwiftWatchdog\settings.json` |
 
 ---
 
