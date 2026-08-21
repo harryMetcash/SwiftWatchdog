@@ -67,7 +67,7 @@ public sealed class WatchdogWorker : BackgroundService
                 else if (IsDailyRestartDue(now))
                 {
                     Log("---- Scheduled daily restart ----");
-                    ForceRestart();
+                    lock (_restartLock) { ForceRestart(); }
                     _lastForcedRestartDate = DateOnly.FromDateTime(now);
                 }
                 else
@@ -323,7 +323,7 @@ public sealed class WatchdogWorker : BackgroundService
         if (svc.Status == ServiceControllerStatus.Running) return;
 
         Log($"Service is {svc.Status} — unexpected. Initiating recovery restart.");
-        RestartService(svc);
+        lock (_restartLock) { RestartService(svc); }
     }
 
     private void ForceRestart()
