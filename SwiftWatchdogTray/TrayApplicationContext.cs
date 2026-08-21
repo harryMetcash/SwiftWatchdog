@@ -29,11 +29,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _pauseItem  = new ToolStripMenuItem("Pause Watchdog",  null, OnPause);
         _resumeItem = new ToolStripMenuItem("Resume Watchdog", null, OnResume);
+        var optionsItem = new ToolStripMenuItem("Options...", null, OnOptions);
         var exitItem = new ToolStripMenuItem("Exit", null, OnExit);
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_pauseItem);
         menu.Items.Add(_resumeItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(optionsItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
@@ -97,6 +100,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
         RefreshMenuState();
     }
 
+    private void OnOptions(object? sender, EventArgs e)
+    {
+        string result = SendCommand("GETSETTINGS");
+        if (!result.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(result, "SwiftWatchdog", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        string json = result.Length > 3 ? result[3..].Trim() : "";
+
+        WatchdogSettingsDto? settings;
+        try
+        {
+            settings = WatchdogSettingsDto.FromJson(json);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to parse settings from service: {ex.Message}",
+                "SwiftWatchdog", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (settings is null)
+        {
+            MessageBox.Show("Received empty settings from service.",
+                "SwiftWatchdog", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var form = new OptionsForm(settings, SendCommand);
+        form.ShowDialog();
+    }
+
     private void OnExit(object? sender, EventArgs e)
     {
         _trayIcon.Visible = false;
@@ -117,7 +154,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             pipe.Write(commandBytes, 0, commandBytes.Length);
             pipe.Flush();
 
-            var buffer = new byte[64];
+            var buffer = new byte[8192];
             int bytesRead = pipe.Read(buffer, 0, buffer.Length);
             return System.Text.Encoding.UTF8
                 .GetString(buffer, 0, bytesRead)
