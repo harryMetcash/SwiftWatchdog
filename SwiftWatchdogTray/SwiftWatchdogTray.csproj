@@ -16,8 +16,8 @@
     <Company>SwiftWatchdog</Company>
     <Product>SwiftPOS Watchdog Tray</Product>
     <Description>System tray controller for SwiftPOS Watchdog service</Description>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

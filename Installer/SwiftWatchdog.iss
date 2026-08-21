@@ -3,7 +3,7 @@
 ; Single UAC click installs both service and tray app.
 
 #define AppName      "SwiftWatchdog"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.1.0"
 #define AppPublisher "Harry Boardman"
 #define InstallDir   "{commonappdata}\SwiftWatchdog"
 #define ServiceExe   "SwiftWatchdog.exe"
@@ -63,13 +63,17 @@ Type: files; Name: "{#InstallDir}\{#TrayExe}"
 Type: dirifempty; Name: "{#InstallDir}"
 
 [Code]
-// Kill any running tray instance before upgrade/reinstall
+// Stop the service and kill any running tray instance before upgrade/reinstall.
+// Stopping the service is required so [Files] can overwrite its running,
+// locked exe — without this, an upgrade over an already-installed version
+// can silently fail to replace SwiftWatchdog.exe.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
 begin
   if CurStep = ssInstall then
   begin
+    Exec('sc.exe', 'stop SwiftWatchdog', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec('taskkill.exe', '/F /IM SwiftWatchdogTray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;

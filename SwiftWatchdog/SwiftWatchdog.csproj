@@ -20,8 +20,8 @@
     <Company>SwiftWatchdog</Company>
     <Product>SwiftPOS Watchdog</Product>
     <Description>Monitors Swiftpos Service Monitor for faults &amp; restarts daily</Description>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <Copyright>Harry Boardman</Copyright>
   </PropertyGroup>
 
