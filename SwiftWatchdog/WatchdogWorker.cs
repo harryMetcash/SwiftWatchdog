@@ -421,7 +421,9 @@ public sealed class WatchdogWorker : BackgroundService
         return svc;
     }
 
-    private static void KillServiceProcess(string serviceName)
+    /// <summary>Resolves a service's current process ID via sc.exe. Returns null if
+    /// the service isn't found, isn't running, or the output couldn't be parsed.</summary>
+    private static int? GetServicePid(string serviceName)
     {
         try
         {
@@ -433,15 +435,27 @@ public sealed class WatchdogWorker : BackgroundService
             {
                 var pidStr = pidLine.Split(':').LastOrDefault()?.Trim();
                 if (int.TryParse(pidStr, out int pid) && pid > 0)
-                {
-                    System.Diagnostics.Process.GetProcessById(pid).Kill(entireProcessTree: true);
-                    Log($"Killed process PID={pid}.");
-                    return;
-                }
+                    return pid;
             }
-            Log("WARNING: Could not determine service PID to kill.");
         }
-        catch (Exception ex) { Log($"WARNING: KillServiceProcess failed: {ex.Message}"); }
+        catch { /* fall through to null */ }
+        return null;
+    }
+
+    private static void KillServiceProcess(string serviceName)
+    {
+        int? pid = GetServicePid(serviceName);
+        if (pid is int p)
+        {
+            try
+            {
+                System.Diagnostics.Process.GetProcessById(p).Kill(entireProcessTree: true);
+                Log($"Killed process PID={p}.");
+                return;
+            }
+            catch (Exception ex) { Log($"WARNING: Failed to kill PID={p}: {ex.Message}"); return; }
+        }
+        Log("WARNING: Could not determine service PID to kill.");
     }
 
     private static void RunSc(string arguments)
