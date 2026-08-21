@@ -15,30 +15,38 @@ public sealed class WatchdogWorker : BackgroundService
     // ── Configuration ─────────────────────────────────────────────────────────
     private const string TargetDisplayName    = "SwiftPOS Service Monitoring Service";
     private const int    CheckIntervalSeconds = 60;
-    private static readonly TimeOnly DailyRestartTime = new(3, 0);
     private const int    TimeoutSeconds       = 120;
     private const int    StopTimeoutSeconds   = 60;
     private const int    PollSeconds          = 2;
     public  const string DataDir             = @"C:\ProgramData\SwiftWatchdog";
     private const string PauseFilePath       = DataDir + @"\PAUSED";
     private const string PipeName            = "SwiftWatchdogCtrl";
+    private const int    PipeBufferSize      = 8192;
     private const int    LogRetentionDays    = 30;
     // ─────────────────────────────────────────────────────────────────────────
 
     private DateOnly _lastForcedRestartDate = DateOnly.MinValue;
     private DateOnly _lastPurgeDate         = DateOnly.MinValue;
 
+    private WatchdogSettings _settings = WatchdogSettings.Default;
+    private readonly object  _restartLock = new();
+
     public WatchdogWorker(ILogger<WatchdogWorker> logger) { }  // logger unused; logging goes via static Log()
 
     private static string LogFilePath => Path.Combine(DataDir, $"watchdog-{DateTime.Now:yyyy-MM-dd}.log");
+    private static string SettingsFilePath => Path.Combine(DataDir, "settings.json");
     private static bool   IsPaused    => File.Exists(PauseFilePath);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         EnsureDataDir();
+        _settings = WatchdogSettings.LoadOrDefault(SettingsFilePath, Log);
+
         Log("Watchdog started.");
         Log($"  Status check  : every {CheckIntervalSeconds}s — restarts if not Running.");
-        Log($"  Forced restart: daily at {DailyRestartTime:HH:mm} regardless of status.");
+        Log($"  Forced restart: daily at {_settings.DailyRestartTime} regardless of status.");
+        Log($"  CPU monitor   : {(_settings.CpuMonitoringEnabled ? "enabled" : "disabled")} — " +
+            $"threshold {_settings.CpuThresholdPercent}% (per-core) sustained {_settings.CpuSustainedPeriodSeconds}s.");
         Log($"  Log directory : {DataDir}  (retained {LogRetentionDays} days)");
 
         // Named pipe server runs on a background thread
@@ -99,42 +107,52 @@ public sealed class WatchdogWorker : BackgroundService
                     maxNumberOfServerInstances: 1,
                     PipeTransmissionMode.Byte,
                     PipeOptions.None,
-                    inBufferSize: 256, outBufferSize: 256,
+                    inBufferSize: PipeBufferSize, outBufferSize: PipeBufferSize,
                     security);
 
-                // Hoist command outside try so it's accessible after the pipe is disposed
-                string? command = null;
+                // Hoist outside the inner try so it's accessible after the pipe is disposed —
+                // PAUSE/RESUME are fire-and-forget: respond first (recognized keyword only),
+                // then actually pause/resume after the pipe closes. GETSETTINGS/SETSETTINGS are
+                // NOT fire-and-forget — they validate and respond with the real outcome while the
+                // pipe is still open, so the tray gets an accurate result.
+                string? deferredCommand = null;
                 try
                 {
                     pipe.WaitForConnection();
 
-                    // Read command using raw bytes — StreamReader.leaveOpen is unreliable on PipeStream
-                    // and disposes the underlying pipe prematurely
-                    var buffer = new byte[64];
-                    int bytesRead = pipe.Read(buffer, 0, buffer.Length);
-                    command = System.Text.Encoding.UTF8
-                        .GetString(buffer, 0, bytesRead)
-                        .Trim()
-                        .TrimEnd('\r', '\n')
-                        .ToUpperInvariant();
-
+                    string raw = ReadPipeMessage(pipe, PipeBufferSize);
+                    (string command, string payload) = ParsePipeMessage(raw);
                     Log($"Pipe command received: {command}");
 
-                    // Write response as raw bytes for the same reason
-                    string response = (command is "PAUSE" or "RESUME") ? "OK\n" : "ERR: Unknown command\n";
-                    byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(response);
-                    pipe.Write(responseBytes, 0, responseBytes.Length);
-                    pipe.Flush();
+                    switch (command)
+                    {
+                        case "PAUSE":
+                        case "RESUME":
+                            WritePipeResponse(pipe, "OK");
+                            deferredCommand = command;
+                            break;
+
+                        case "GETSETTINGS":
+                            WritePipeResponse(pipe, $"OK {_settings.ToJson()}");
+                            break;
+
+                        case "SETSETTINGS":
+                            HandleSetSettings(pipe, payload);
+                            break;
+
+                        default:
+                            WritePipeResponse(pipe, "ERR: Unknown command");
+                            break;
+                    }
+
                     pipe.WaitForPipeDrain();
                     pipe.Disconnect();
-
-                    if (response.StartsWith("ERR")) command = null; // don't run handler
                 }
                 finally { pipe.Dispose(); }
 
                 // Now do the work — pipe is already closed so no timing issues
-                if (command == "PAUSE")       HandlePause();
-                else if (command == "RESUME") HandleResume();
+                if (deferredCommand == "PAUSE")       HandlePause();
+                else if (deferredCommand == "RESUME") HandleResume();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -142,6 +160,60 @@ public sealed class WatchdogWorker : BackgroundService
                 Log($"WARNING: Pipe server error: {ex.Message}");
                 Thread.Sleep(1000); // brief back-off before re-listening
             }
+        }
+    }
+
+    private static string ReadPipeMessage(System.IO.Pipes.PipeStream pipe, int maxBytes)
+    {
+        using var ms = new MemoryStream();
+        var chunk = new byte[1024];
+        while (ms.Length < maxBytes)
+        {
+            int bytesRead = pipe.Read(chunk, 0, chunk.Length);
+            if (bytesRead <= 0) break;
+            ms.Write(chunk, 0, bytesRead);
+            if (Array.IndexOf(chunk, (byte)'\n', 0, bytesRead) >= 0) break;
+        }
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    private static (string Command, string Payload) ParsePipeMessage(string raw)
+    {
+        string trimmed = raw.TrimEnd('\r', '\n');
+        int spaceIdx = trimmed.IndexOf(' ');
+        return spaceIdx < 0
+            ? (trimmed.ToUpperInvariant(), string.Empty)
+            : (trimmed[..spaceIdx].ToUpperInvariant(), trimmed[(spaceIdx + 1)..]);
+    }
+
+    private static void WritePipeResponse(System.IO.Pipes.PipeStream pipe, string message)
+    {
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(message + "\n");
+        pipe.Write(bytes, 0, bytes.Length);
+        pipe.Flush();
+    }
+
+    private void HandleSetSettings(System.IO.Pipes.PipeStream pipe, string payload)
+    {
+        if (!WatchdogSettings.TryParse(payload, out WatchdogSettings parsed, out string parseError))
+        {
+            WritePipeResponse(pipe, $"ERR: {parseError}");
+            return;
+        }
+
+        try
+        {
+            parsed.SaveAtomic(SettingsFilePath);
+            _settings = parsed; // atomic reference swap — readers snapshot _settings at loop-top
+            Log("Settings updated via tray: " +
+                $"CPU monitoring={parsed.CpuMonitoringEnabled}, threshold={parsed.CpuThresholdPercent}%, " +
+                $"sustained={parsed.CpuSustainedPeriodSeconds}s, dailyRestart={parsed.DailyRestartTime}.");
+            WritePipeResponse(pipe, "OK");
+        }
+        catch (Exception ex)
+        {
+            Log($"WARNING: Failed to save settings.json: {ex.Message}");
+            WritePipeResponse(pipe, $"ERR: Failed to save settings: {ex.Message}");
         }
     }
 
@@ -214,7 +286,8 @@ public sealed class WatchdogWorker : BackgroundService
     {
         DateOnly today   = DateOnly.FromDateTime(now);
         TimeOnly timeNow = TimeOnly.FromDateTime(now);
-        return timeNow >= DailyRestartTime && _lastForcedRestartDate < today;
+        TimeOnly restartTime = _settings.GetDailyRestartTimeOnly();
+        return timeNow >= restartTime && _lastForcedRestartDate < today;
     }
 
     private void PurgeOldLogsIfDue(DateTime now)
